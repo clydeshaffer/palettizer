@@ -26,6 +26,7 @@ double viewScale = 1;
 #define MAXSCALE 64.0
 
 float brightness = 1, contrast = 1, hue = 0, saturation = 1;
+float ditherAmount = 1;
 
 SDL_Event e;
 bool running = true;
@@ -37,19 +38,41 @@ bool running = true;
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
 
+#define CLAMP8(x) if(x < 0) x = 0; if(x > 255) x = 255;
+
+struct BGRSigned {
+    int8_t b,g,r;
+
+    BGRSigned operator*(float const &scalar) {
+        BGRSigned scaled;
+        scaled.b = (int) ((float) b * scalar);
+        scaled.g = (int) ((float) g * scalar);
+        scaled.r = (int) ((float) r * scalar);
+        return scaled;
+    }
+};
+
 struct BGR {
     uint8_t b, g, r;
 
-    BGR operator+(BGR const &color) {
+    BGR operator+(BGRSigned const &color) {
+        int16_t bs = b + color.b;
+        int16_t gs = g + color.g;
+        int16_t rs = r + color.r;
+
+        CLAMP8(bs);
+        CLAMP8(gs);
+        CLAMP8(rs);
+
         BGR sum;
-        sum.b = b + color.b;
-        sum.g = g + color.g;
-        sum.r = r + color.r;
+        sum.b = bs;
+        sum.g = gs;
+        sum.r = rs;
         return sum;
     }
 
-    BGR operator-(BGR const &color) {
-        BGR dif;
+    BGRSigned operator-(BGR const &color) {
+        BGRSigned dif;
         dif.b = b - color.b;
         dif.g = g - color.g;
         dif.r = r - color.r;
@@ -123,9 +146,9 @@ void update_dithered_texture() {
             BGR newValue = nearest_palette_color(*dithered_pixels);
             *dithered_pixels = newValue;
 
-            BGR error = oldValue - newValue;
+            BGRSigned error = oldValue - newValue;
             if(col < (bmpRect.w)) {
-                *(dithered_pixels+1) = *(dithered_pixels+1) + error;
+                *(dithered_pixels+1) = *(dithered_pixels+1) + (error * ditherAmount);
             }
             ++dithered_pixels;
         }
@@ -206,6 +229,9 @@ void mainloop_application() {
             }
             ImGui::SliderFloat("Contrast", &contrast, 0, 2);
             ImGui::SliderFloat("Hue", &hue, -180, 180);
+            if(ImGui::SliderFloat("Dither%", &ditherAmount, 0, 1)) {
+                update_dithered_texture();
+            }
             ImGui::EndChild();
         }
     }
